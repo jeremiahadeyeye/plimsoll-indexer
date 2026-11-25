@@ -187,6 +187,42 @@ func TestGetAssetCoverage(t *testing.T) {
 	}
 }
 
+// HEAD answers existence with a status code and no body, so a client can
+// check a listing without downloading the asset document.
+func TestHeadAsset(t *testing.T) {
+	srv := server()
+	defer srv.Close()
+	for _, tc := range []struct {
+		name string
+		path string
+		want int
+	}{
+		{"listed", "/v1/assets/" + sac, http.StatusOK},
+		{"unlisted", "/v1/assets/" + unlistedSAC(t), http.StatusNotFound},
+		{"malformed", "/v1/assets/not-a-sac", http.StatusBadRequest},
+	} {
+		req, err := http.NewRequest(http.MethodHead, srv.URL+tc.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s: status %d want %d", tc.name, resp.StatusCode, tc.want)
+		}
+		if len(body) != 0 {
+			t.Errorf("%s: body %q, want empty", tc.name, body)
+		}
+	}
+}
+
 func TestMinTierExcludesWeakerReports(t *testing.T) {
 	srv := server()
 	defer srv.Close()
@@ -394,6 +430,9 @@ func TestOpenAPISpec(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "openapi: 3.1.0") {
 		t.Fatalf("expected openapi 3.1.0 spec, got: %s", string(body))
+	}
+	if !strings.Contains(string(body), "operationId: headAsset") {
+		t.Error("expected the spec to document the HEAD asset operation")
 	}
 }
 
